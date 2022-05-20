@@ -68,7 +68,7 @@ isjnseq=~isempty(strfind(sequence,'jn_')) ||... %Is this another one of Jamie Ne
 isWIP529=~isempty(strfind(sequence,'edit_529')); %Is this WIP 529 (MEGA-PRESS)?
 isWIP859=~isempty(strfind(sequence,'edit_859')); %Is this WIP 859 (MEGA-PRESS)?
 isMinn=~isempty(strfind(sequence,'eja_svs_')); %Is this one of Eddie Auerbach's (CMRR, U Minnesota) sequences?
-isMinnejaslaser=~isempty(strfind(sequence, 'eja_svs_mslaser')) % Auerbach semi-LASER behaves differently
+isMinnejaslaser=~isempty(strfind(sequence, 'eja_svs_mslaser'
 isSiemens=(~isempty(strfind(sequence,'svs_se')) ||... %Is this the Siemens PRESS seqeunce?
             ~isempty(strfind(sequence,'svs_st'))) && ... % or the Siemens STEAM sequence?
             isempty(strfind(sequence,'eja_svs'));    %And make sure it's not 'eja_svs_steam'.
@@ -392,7 +392,7 @@ if isWIP529 || isWIP859
     leftshift = twix_obj.image.cutOff(1,1);
 elseif isSiemens
     leftshift = twix_obj.image.freeParam(1);
-elseif xor(isMinn,isMinnejaslaser)  %don't do this if it's semi-LASER 
+elseif isMinn
     leftshift = twix_obj.image.iceParam(5,1);
 else
     leftshift = twix_obj.image.freeParam(1);
