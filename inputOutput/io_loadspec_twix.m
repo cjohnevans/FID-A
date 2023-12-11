@@ -3,7 +3,7 @@
 %Edits from Franck Lamberton, 2017.
 %
 % USAGE:
-% out=io_loadspec_twix(filename);
+% [out,out_w]=io_loadspec_twix(filename);
 % 
 % DESCRIPTION:
 % Reads in siemens twix raw data (.dat file) using the mapVBVD.m and 
@@ -19,8 +19,10 @@
 %
 % OUTPUTS:
 % out        = Input dataset in FID-A structure format.
+% out_w      = Input water reference data (only available for some
+%               sequences.  This will be empty for others).
 
-function out=io_loadspec_twix(filename);
+function [out,out_w]=io_loadspec_twix(filename);
 
 
 %read in the data using the new mapVBVD.  This code has been adapted to 
@@ -60,14 +62,16 @@ isSpecial=~isempty(strfind(sequence,'rm_special')) ||...  %Is this Ralf Mekle's 
 isjnSpecial=~isempty(strfind(sequence,'jn_svs_special')) ||...  %or Jamie Near's SPECIAL sequence?
             ~isempty(strfind(sequence,'md_Adiab_Special')) ||... %or Masoumeh Dehghani's Adiabatic SPECIAL sequence?
             ~isempty(strfind(sequence,'md_Special')) ||... %or another version of Masoumeh Dehghani's SPECIAL sequence?
-            ~isempty(strfind(sequence,'md_Inv_special')); %or Masoumeh Dehghani's Inversion Recovery SPECIAL sequence?
+            ~isempty(strfind(sequence,'md_Inv_special')) ||... %or Masoumeh Dehghani's Inversion Recovery SPECIAL sequence?
+            ~isempty(strfind(sequence,'pt_svs_special_31p')); %or Peter Trong's 31P SPECIAL seqeunce?
 ishdSPECIAL=~isempty(strfind(sequence,'md_dvox_special')); %Is this Masoumeh Dehghani's hadamard-encoded dual-SPECIAL sequence?
 isjnMP=~isempty(strfind(sequence,'jn_MEGA_GABA')); %Is this Jamie Near's MEGA-PRESS sequence?
 isjnseq=~isempty(strfind(sequence,'jn_')) ||... %Is this another one of Jamie Near's sequences 
         ~isempty(strfind(sequence,'md_'));      %or a sequence derived from Jamie Near's sequences (by Masoumeh Dehghani)?
 isWIP529=~isempty(strfind(sequence,'edit_529')); %Is this WIP 529 (MEGA-PRESS)?
 isWIP859=~isempty(strfind(sequence,'edit_859')); %Is this WIP 859 (MEGA-PRESS)?
-isMinn=~isempty(strfind(sequence,'eja_svs_')); %Is this one of Eddie Auerbach's (CMRR, U Minnesota) sequences?
+isMinn_eja=~isempty(strfind(sequence,'eja_svs_')); %Is this one of Eddie Auerbach's (CMRR, U Minnesota) sequences?
+isMinn_dkd=~isempty(strfind(sequence,'svs_slaserVOI_dkd2')); %Is this Dinesh Deelchand's (CMRR, U Minnesota) sequence?
 isSiemens=(~isempty(strfind(sequence,'svs_se')) ||... %Is this the Siemens PRESS seqeunce?
             ~isempty(strfind(sequence,'svs_st'))) && ... % or the Siemens STEAM sequence?
             isempty(strfind(sequence,'eja_svs'));    %And make sure it's not 'eja_svs_steam'.
@@ -83,13 +87,20 @@ isSiemens=(~isempty(strfind(sequence,'svs_se')) ||... %Is this the Siemens PRESS
 %sequence also falls into this category. 
 if isSpecial ||... %Catches Ralf Mekle's and CIBM version of the SPECIAL sequence 
         (strcmp(version,'vd') && isjnSpecial) ||... %and the VD/VE versions of Jamie Near's SPECIAL sequence
-        (strcmp(version,'vd') && isjnMP);  %and the VD/VE versions of Jamie Near's MEGA-PRESS sequence                                                   
+        (strcmp(version,'vd') && isjnMP && twix_obj.image.NSet==1 );  %and the VD/VE versions of Jamie Near's MEGA-PRESS sequence
+                                                                        %NOTE:  I added the twix_obj.image.NSet==1 condition to the 
+                                                                        %above 'if' statement becuase I found that there is a legacy 
+                                                                        %version of jn_MEGA_GABA in which the version is 'vd', but the 
+                                                                        %edit-ON and edit-OFF subspecs are already stored in separate 
+                                                                        %elements of the "Set" dimension.  These legacy datasets were 
+                                                                        %not being handled correctly before, but are handled fine now 
+                                                                        %with this new condition.                                                                     
     squeezedData=squeeze(dOut.data);
     if twix_obj.image.NCol>1 && twix_obj.image.NCha>1
         data(:,:,:,1)=squeezedData(:,:,[1:2:end-1]);
         data(:,:,:,2)=squeezedData(:,:,[2:2:end]);
         sqzSize=[sqzSize(1) sqzSize(2) sqzSize(3)/2 2];
-    elseif twix_obj.NCol>1 && twixObj.image.NCha==1
+    elseif twix_obj.image.NCol>1 && twix_obj.image.NCha==1
         data(:,:,1)=squeezedData(:,[1:2:end-1]);
         data(:,:,2)=squeezedData(:,[2:2:end]);
         sqzSize=[sqzSize(1) sqzSize(2)/2 2];
@@ -161,6 +172,35 @@ TE = twix_obj.hdr.MeasYaps.alTE{1};  %Franck Lamberton
 %Find the TR:
 TR = twix_obj.hdr.MeasYaps.alTR{1};  %Franck Lamberton
 
+wRefs=false;  %Flag to identify if there are automatic water reference scans acquired.  There are none by default.
+
+%noticed that in Dinesh Deelchand's CMRR sLASER seuqence
+%(svs_slaserVOI_dkd2) contains some reference scans, which are acquired at
+%the very end.  We will save these and store them as a separate water 
+%reference structure (out_w).  
+if isMinn_dkd
+    %If nRefs is non-zero, then there are automatic water reference scans.
+    %These will be saved as "outw".
+    nRefs=twix_obj.hdr.MeasYaps.sSpecPara.lAutoRefScanNo;
+    if nRefs==1
+        nRefs=0;%Becuase Nrefs seems to have a default value of 1 even if there are no reference scans. 
+    end
+    if nRefs>0
+        wRefs=true;
+    end
+   
+    if ndims(fids)==4
+        fids_w=fids(:,:,:,end-(nRefs-1):end);
+        fids=fids(:,:,:,end-(nRefs+Naverages-1):end-nRefs);
+    elseif ndims(fids)==3
+        fids_w=fids(:,:,end-(nRefs-1):end);
+        fids=fids(:,:,end-(nRefs+Naverages-1):end-nRefs);
+    elseif ndims(fids)==2
+        fids_w=fids(:,end-(nRefs-1):end);
+        fids=fids(:,end-(nRefs+Naverages-1):end-nRefs);
+    end
+end
+
 %Now begin indexing the dimensions of the data array. ie. create the dims
 %structure, which specifies which dimensions of the data array are being
 %used to hold the time-domain data, the multiple coil channels, the
@@ -189,7 +229,7 @@ end
 
 %Now index the dimension of the averages
 if strcmp(version,'vd') || strcmp(version,'ve')
-    if isMinn
+    if isMinn_eja || isMinn_dkd
         dims.averages=find(strcmp(sqzDims,'Set'));
     else
         dims.averages=find(strcmp(sqzDims,'Ave'));
@@ -234,7 +274,7 @@ if ~isempty(dimsToIndex)
         else
             dims.subSpecs=find(strcmp(sqzDims,'Ida'));
         end
-    elseif isWIP529 || isMinn
+    elseif isWIP529 || isMinn_eja
         dims.subSpecs=find(strcmp(sqzDims,'Eco'));
     elseif isWIP859
         dims.subSpecs=find(strcmp(sqzDims,'Ide'));
@@ -277,52 +317,94 @@ end
 if length(sqzDims)==5
     fids=permute(fids,[dims.t dims.coils dims.averages dims.subSpecs dims.extras]);
     dims.t=1;dims.coils=2;dims.averages=3;dims.subSpecs=4;dims.extras=5;
+    if wRefs
+        fids_w=permute(fids_w,[dims.t dims.coils dims.averages dims.subSpecs dims.extras]);
+    end
 elseif length(sqzDims)==4
     if dims.extras==0
         fids=permute(fids,[dims.t dims.coils dims.averages dims.subSpecs]);
         dims.t=1;dims.coils=2;dims.averages=3;dims.subSpecs=4;dims.extras=0;
+        if wRefs
+            fids_w=permute(fids_w,[dims.t dims.coils dims.averages dims.subSpecs]);
+        end
     elseif dims.subSpecs==0
         fids=permute(fids,[dims.t dims.coils dims.averages dims.extras]);
         dims.t=1;dims.coils=2;dims.averages=3;dims.subSpecs=0;dims.extras=4;
+        if wRefs
+            fids_w=permute(fids_w,[dims.t dims.coils dims.averages dims.extras]);
+        end
     elseif dims.averages==0
         fids=permute(fids,[dims.t dims.coils dims.subSpecs dims.extras]);
         dims.t=1;dims.coils=2;dims;averages=0;dims.subSpecs=3;dims.extras=4;
+        if wRefs
+            fids_w=permute(fids_w,[dims.t dims.coils dims.subSpecs dims.extras]);
+        end
     elseif dims.coils==0
         fids=permute(fids,[dims.t dims.averages dims.subSpecs dims.extras]);
         dims.t=1;dims.coils=0;dims.averages=2;dims.subSpecs=3;dims.extras=4;
+        if wRefs
+            fids_w=permute(fids_w,[dims.t dims.averages dims.subSpecs dims.extras]);
+        end
     end
 elseif length(sqzDims)==3
     if dims.extras==0 && dims.subSpecs==0
         fids=permute(fids,[dims.t dims.coils dims.averages]);
         dims.t=1;dims.coils=2;dims.averages=3;dims.subSpecs=0;dims.extras=0;
+        if wRefs
+            fids_w=permute(fids_w,[dims.t dims.coils dims.averages]);
+        end
     elseif dims.extras==0 && dims.averages==0
         fids=permute(fids,[dims.t dims.coils dims.subSpecs]);
         dims.t=1;dims.coils=2;dims.averages=0;dims.subSpecs=3;dims.extras=0;
+        if wRefs
+            fids_w=permute(fids_w,[dims.t dims.coils dims.subSpecs]);
+        end
     elseif dims.extras==0 && dims.coils==0
         fids=permute(fids,[dims.t dims.averages dims.subSpecs]);
         dims.t=1;dims.coils=0;dims.averages=2;dims.subSpecs=3;dims.extras=0;
+        if wRefs
+            fids_w=permute(fids_w,[dims.t dims.averages dims.subSpecs]);
+        end
     end
 elseif length(sqzDims)==2
     if dims.extras==0 && dims.subSpecs==0 && dims.averages==0
         fids=permute(fids,[dims.t dims.coils]);
         dims.t=1;dims.coils=2;dims.averages=0;dims.subSpecs=0;dims.extras=0;
+        if wRefs
+            fids_w=permute(fids_w,[dims.t dims.coils]);
+        end
     elseif dims.extras==0 && dims.subSpecs==0 && dims.coils==0
         fids=permute(fids,[dims.t dims.averages]);
         dims.t=1;dims.coils=0;dims.averages=2;dims.subSpecs=0;dims.extras=0;
+        if wRefs
+            fids_w=permute(fids_w,[dims.t dims.averages]);
+        end
     elseif dims.extras==0 && dims.averages==0 && dims.coils==0
         fids=permute(fids,[dims.t dims.subSpecs]);
         dims.t=1;dims.coils=0;dims.averages=0;dims.subSpecs=2;dims.extras=0;
+        if wRefs
+            fids_w=permute(fids_w,[dims.t dims.subSpecs]);
+        end
     end
 elseif length(sqzDims)==1
     fids=permute(fids,[dims.t]);
     dims.t=1;dims.coils=0;dims.averages=0;dims.subSpecs=0;dims.extras=0;
+    if wRefs
+        fids_w=permute(fids_w,[dims.t]);
+    end
 end
 
 %Now get the size of the data array:
 sz=size(fids);
+if wRefs
+    sz_w=size(fids_w);
+end
 
 %Now take fft of time domain to get fid:
 specs=fftshift(ifft(fids,[],dims.t),dims.t);
+if wRefs
+    specs_w=fftshift(ifft(fids_w,[],dims.t),dims.t);
+end
     
 
 %Now get relevant scan parameters:*****************************
@@ -332,7 +414,8 @@ dwelltime = twix_obj.hdr.MeasYaps.sRXSPEC.alDwellTime{1}*1e-9;  %Franck Lamberto
 spectralwidth=1/dwelltime;
     
 %Get TxFrq
-txfrq=twix_obj.hdr.Meas.Frequency;
+txfrq=twix_obj.hdr.Config.Frequency;
+
 
 %Get Date
 %date = getfield(regexp(twix_obj.hdr.MeasYaps.tReferenceImage0, ...
@@ -351,17 +434,33 @@ if dims.subSpecs ~=0
     if dims.averages~=0
         averages=sz(dims.averages)*sz(dims.subSpecs);
         rawAverages=averages;
+        if wRefs
+            averages_w=sz_w(dims.averages)*sz_w(dims.subSpecs);
+            rawAverages_w=averages_w;
+        end
     else
         averages=sz(dims.subSpecs);
         rawAverages=1;
+        if wRefs
+            averages_w=sz_w(dims.subSpecs);
+            rawAverages_w=1;
+        end
     end
 else
     if dims.averages~=0
         averages=sz(dims.averages);
         rawAverages=averages;
+        if wRefs
+            averages_w=sz_w(dims.averages);
+            rawAverages_w=averages_w;
+        end
     else
         averages=1;
         rawAverages=1;
+        if wRefs
+            averages_w=1;
+            rawAverages_w=1;
+        end
     end
 end
 
@@ -391,7 +490,7 @@ if isWIP529 || isWIP859
     leftshift = twix_obj.image.cutOff(1,1);
 elseif isSiemens
     leftshift = twix_obj.image.freeParam(1);
-elseif isMinn
+elseif isMinn_eja || isMinn_dkd
     leftshift = twix_obj.image.iceParam(5,1);
 else
     leftshift = twix_obj.image.freeParam(1);
@@ -401,10 +500,21 @@ end
 
 
 %Calculate t and ppm arrays using the calculated parameters:
+%Switch between different Nuclei - PT,2021
 f=[(-spectralwidth/2)+(spectralwidth/(2*sz(1))):spectralwidth/(sz(1)):(spectralwidth/2)-(spectralwidth/(2*sz(1)))];
-ppm=-f/(Bo*42.577);
-ppm=ppm+4.65;
-
+nucleus=twix_obj.hdr.Config.Nucleus;
+switch nucleus
+    case '1H'
+        gamma=42.576;
+        ppm=-f/(Bo*gamma);
+        ppm=ppm+4.65;
+    case '31P'
+        gamma=17.235;
+        ppm=-f/(Bo*gamma);
+    case '13C'
+        gamma=10.7084;
+        ppm=-f/(Bo*gamma);
+end
 t=[0:dwelltime:(sz(1)-1)*dwelltime];
 
 
@@ -428,6 +538,8 @@ out.seq=seq;
 out.te=TE/1000;
 out.tr=TR/1000;
 out.pointsToLeftshift=leftshift;
+out.nucleus=nucleus;
+out.gamma=gamma;
 
 
 %FILLING IN THE FLAGS
@@ -449,6 +561,55 @@ else
     out.flags.isFourSteps=(out.sz(out.dims.subSpecs)==4);
 end
 
+
+if wRefs
+    %FILLING IN DATA STRUCTURE
+    out_w.fids=fids_w;
+    out_w.specs=specs_w;
+    out_w.sz=sz_w;
+    out_w.ppm=ppm;
+    out_w.t=t;
+    out_w.spectralwidth=spectralwidth;
+    out_w.dwelltime=dwelltime;
+    out_w.txfrq=txfrq;
+    out_w.date=date;
+    out_w.dims=dims;
+    out_w.Bo=Bo;
+    out_w.averages=averages_w;
+    out_w.rawAverages=rawAverages_w;
+    out_w.subspecs=subspecs;
+    out_w.rawSubspecs=rawSubspecs;
+    out_w.seq=seq;
+    out_w.te=TE/1000;
+    out_w.tr=TR/1000;
+    out_w.pointsToLeftshift=leftshift;
+    out_w.nucleus=nucleus;
+    out_w.gamma=gamma;
+
+
+    %FILLING IN THE FLAGS
+    out_w.flags.writtentostruct=1;
+    out_w.flags.gotparams=1;
+    out_w.flags.leftshifted=0;
+    out_w.flags.filtered=0;
+    out_w.flags.zeropadded=0;
+    out_w.flags.freqcorrected=0;
+    out_w.flags.phasecorrected=0;
+    out_w.flags.averaged=0;
+    out_w.flags.addedrcvrs=0;
+    out_w.flags.subtracted=0;
+    out_w.flags.writtentotext=0;
+    out_w.flags.downsampled=0;
+    if out_w.dims.subSpecs==0
+        out_w.flags.isFourSteps=0;
+    else
+        out_w.flags.isFourSteps=(out_w.sz(out_wop_pl.dims.subSpecs)==4);
+    end
+else
+    %No water reference data found.  Returning empty struct for out_w:
+    disp('No water reference data found.  Returning empty struct for out_w');
+    out_w=struct();
+end
 
 
 %DONE

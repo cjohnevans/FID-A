@@ -1,17 +1,23 @@
-%io_writelcm.m
-%Jamie Near, McGill University 2014.
+%io_CSIwritelcm.m
+%Brenden Kadota, Sunnybrook Research Institute 2022.
 %
 % USAGE:
-% RF=io_CSIwritelcm(in,outfile,te);
+% RF=io_CSIwritelcm(in,outfile);
 % 
 % DESCRIPTION:
-% Takes MRS data in matlab structure format and writes it to a text file
-% that can be read by LCModel.
+% Takes MRSI data in matlab structure format and writes it to a text file
+% that can be read by LCModel (LCModel RAW format).  Namely, "One voxel's
+% data is immediately concatenated to the preceding one's.  We use the
+% Siemens naming convention that the voxels in the file start at the top
+% left and are ordered as in three nested loops, with the columns in the
+% inner loop, the rows in the middle loop, and the slices in the outer
+% loop;...Thus, the second voxel's data in the file is said to come from
+% Column 2 of Row 1 of Slice 1 (assuming that there is more than one
+% column)."
 % 
 % INPUTS:
 % in         = input data in matlab structure format.
 % outfile    = Desired filename of output text file.
-% te         = Echo time of acquisition (in ms).
 %
 % OUTPUTS:
 % RF         = Same as input.  Not used.  The primary output of this
@@ -29,7 +35,8 @@ end
 % zop=0;
 % t0=0;
   Bo=in.Bo;
-  hzppm=getGamma('overTwoPi', true)*Bo/1e6;
+%   hzppm=getGamma('overTwoPi', true)*Bo/1e6;
+  hzppm=in.gamma*Bo/1e6;
   dwelltime=in.spectralDwellTime;
 % Nuc=0;
 % PatName='No Name';
@@ -37,7 +44,7 @@ end
 % addinfo='jnear';
 
 specs = ifft(fftshift(getData(in), in.dims.t), [], in.dims.t);
-vec_signal = specs(:);
+vec_signal = conj(specs(:));
 
 RF = [imag(vec_signal) real(vec_signal)];
 

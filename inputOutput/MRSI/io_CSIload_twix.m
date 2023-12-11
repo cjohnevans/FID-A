@@ -1,5 +1,5 @@
-%io_CSIload_twix.m
-%Brenden Kadota, Jamie Near, Sunnybrook 2021.
+% io_CSIload_twix.m
+% Brenden Kadota, Jamie Near, Sunnybrook 2021.
 %
 % USAGE:
 % out = io_CSIload_twix('filename');
@@ -55,7 +55,9 @@ function MRSIStruct = io_CSIload_twix(filename)
     %premute dims to be in a standardized order
     [dims, data] = permuteDims(dims, data);
     %get matrix size
-    [numX, numY, numZ] = getNumberOfVoxels(isCartesian, data, dims);
+    numX=twix_obj.hdr.MeasYaps.sKSpace.lBaseResolution;
+    numY=twix_obj.hdr.MeasYaps.sKSpace.lPhaseEncodingLines;
+    numZ=twix_obj.hdr.MeasYaps.sKSpace.dSliceResolution;
 
 
     sz = size(data);
@@ -87,6 +89,19 @@ function MRSIStruct = io_CSIload_twix(filename)
     end
     %Now get the size of the data array:
     sz = size(data);
+    
+    %Getting Nucleus - PT,2022
+%     nucleus=twix_obj.hdr.Config.Nucleus;
+      nucleus='1H';
+%     switch nucleus
+%     case '1H'
+        gamma=42.576;
+%     case '31P'
+%         gamma=17.235;
+%     case '13C'
+%         gamma=10.7084;
+%     end
+
     %****************************************************************
     %FILLING IN DATA STRUCTURE
     MRSIStruct.data = data;
@@ -102,6 +117,8 @@ function MRSIStruct = io_CSIload_twix(filename)
     MRSIStruct.scanDate = findScanDate(twix_obj);
     MRSIStruct.dims = dims;
     MRSIStruct.Bo = twix_obj.hdr.Dicom.flMagneticFieldStrength;
+    MRSIStruct.nucleus=nucleus;
+    MRSIStruct.gamma=gamma;
     MRSIStruct.seq = sequence;
     MRSIStruct.te = twix_obj.hdr.MeasYaps.alTE{1}/1000;
     MRSIStruct.tr = twix_obj.hdr.MeasYaps.alTR{1}/1000;
@@ -309,32 +326,6 @@ function [dims, data] = permuteDims(dims, data)
     nonZeroFields = fields(nonZeroIndex);
     for i = 1:length(nonZeroFields)
         dims.(nonZeroFields{i}) = i;
-    end
-end
-
-%calculate the number of x and y voxels in the image dimension
-function [numX, numY, numZ] = getNumberOfVoxels(isCartesian, data, dims)
-    if(~isCartesian)
-        numX = -1;
-        numY = -1;
-        numZ = -1;
-        while numX < 0 && numY < 0
-            numX = input("Please enter an integer for Nx: \n");
-            numY = input("Please enter an integer for Ny: \n");
-            numZ = input("Please enter an integer for Nz: \n");
-            if(~isa(numX, 'double') || ~isa(numY,'double'))
-                disp('Please enter a number')
-                continue
-            end
-            if(numX < 0 || floor(numX) ~= numX || numY < 0 || floor(numY) ~= numY)
-                disp('Please enter an integer > 0')
-            end
-        end
-    else
-        numX = size(data, dims.kx);
-        numY = size(data, dims.ky);
-        numZ = 1;
-        if(dims.kz ~= 0); numZ = size(data, dims.kz); end
     end
 end
 
